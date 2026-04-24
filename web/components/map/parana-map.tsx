@@ -5,10 +5,18 @@
  *
  * Leaflet acessa `window` no tempo de módulo, então SSR quebra.
  * Este wrapper é a API pública — o resto do app importa daqui.
+ *
+ * Chama `useElectionResults` e entrega o Map pronto para o inner.
+ * Assim o inner não precisa saber nada sobre Supabase/mock.
  */
 
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
+
+import {
+  useElectionResults,
+  type UseElectionResultsFilters,
+} from "@/hooks/use-election-results";
 
 const ParanaMapLazy = dynamic(
   () => import("./parana-map-inner").then((m) => m.ParanaMapInner),
@@ -25,6 +33,17 @@ const ParanaMapLazy = dynamic(
   },
 );
 
-export function ParanaMap() {
-  return <ParanaMapLazy />;
+export function ParanaMap(props: { filters?: UseElectionResultsFilters } = {}) {
+  const { data, isLoading, error, isMock } = useElectionResults(
+    props.filters ?? {},
+  );
+
+  return (
+    <ParanaMapLazy
+      results={data}
+      isLoadingResults={isLoading}
+      resultsError={error}
+      isMock={isMock}
+    />
+  );
 }

@@ -6,6 +6,9 @@
  * ⚠️ NÃO importar diretamente. Usar via `components/map/parana-map.tsx`,
  * que o carrega com `next/dynamic({ ssr: false })`. O Leaflet toca `window`
  * durante o módulo, então SSR quebra.
+ *
+ * Recebe os resultados já prontos (vindos do hook useElectionResults)
+ * — não sabe nada sobre Supabase nem mock.
  */
 
 import "leaflet/dist/leaflet.css";
@@ -14,12 +17,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GeoJSON as LeafletGeoJSON, Layer, Path, PathOptions } from "leaflet";
 import type { Feature } from "geojson";
 import { GeoJSON, MapContainer, TileLayer } from "react-leaflet";
-import { Loader2, MapPinOff } from "lucide-react";
+import { Database, Loader2, MapPinOff } from "lucide-react";
 
-import {
-  MOCK_RESULTS_BY_CODE,
-  type MockResult,
-} from "@/lib/mock/election-data";
+import type {
+  ElectionResult,
+  ResultsByCode,
+} from "@/hooks/use-election-results";
 import { colorForPct, NO_DATA_COLOR } from "@/lib/geo/color-scale";
 import {
   fetchParanaGeoJson,
@@ -42,6 +45,13 @@ const HOVER_STYLE: PathOptions = {
   color: "#F97316", // --primary
 };
 
+type ParanaMapInnerProps = {
+  results: ResultsByCode | null;
+  isLoadingResults?: boolean;
+  resultsError?: Error | null;
+  isMock?: boolean;
+};
+
 function formatPct(value: number): string {
   return `${value.toLocaleString("pt-BR", {
     minimumFractionDigits: 1,
@@ -49,21 +59,44 @@ function formatPct(value: number): string {
   })}%`;
 }
 
-function buildTooltipHtml(name: string, result: MockResult | undefined): string {
-  const pctLine = result
-    ? `<span style="color:#F97316;font-weight:600;">${formatPct(result.pct_valid)}</span>`
-    : `<span style="color:#94A3B8;">Sem dados</span>`;
+function formatInt(value: number): string {
+  return value.toLocaleString("pt-BR");
+}
+
+function buildTooltipHtml(
+  name: string,
+  result: ElectionResult | undefined,
+): string {
+  if (!result) {
+    return `
+      <div style="font-family:inherit;min-width:140px;">
+        <div style="font-weight:600;color:#F1F5F9;margin-bottom:2px;">${name}</div>
+        <div style="font-size:12px;color:#94A3B8;">Sem dados</div>
+      </div>
+    `;
+  }
+  const pctLine = `<span style="color:#F97316;font-weight:600;">${formatPct(result.pct_valid)}</span>`;
+  const votesLine =
+    result.votes > 0
+      ? `<div style="font-size:11px;color:#94A3B8;">${formatInt(result.votes)} votos</div>`
+      : "";
   return `
     <div style="font-family:inherit;min-width:140px;">
       <div style="font-weight:600;color:#F1F5F9;margin-bottom:2px;">${name}</div>
       <div style="font-size:12px;">${pctLine}</div>
+      ${votesLine}
     </div>
   `;
 }
 
-export function ParanaMapInner() {
+export function ParanaMapInner({
+  results,
+  isLoadingResults,
+  resultsError,
+  isMock,
+}: ParanaMapInnerProps) {
   const [geojson, setGeojson] = useState<ParanaGeoJSON | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
   const geoRef = useRef<LeafletGeoJSON | null>(null);
 
   useEffect(() => {
@@ -73,27 +106,33 @@ export function ParanaMapInner() {
         if (!cancelled) setGeojson(data);
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setGeoError(err.message);
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Função de estilo. useMemo porque react-leaflet chama no render.
+  // Força rerender do layer GeoJSON quando os resultados chegam/mudam.
+  // `key` no <GeoJSON> é o jeito canônico no react-leaflet.
+  const resultsVersion = useMemo(() => {
+    if (!results) return "none";
+    return `${results.size}-${isMock ? "mock" : "db"}`;
+  }, [results, isMock]);
+
   const styleFn = useMemo(
     () =>
       (feature?: Feature<any, ParanaMunicipalityProperties>): PathOptions => {
         if (!feature) return BASE_STYLE;
         const code = featureIbgeCode(feature.properties);
-        const result = MOCK_RESULTS_BY_CODE.get(code);
+        const result = results?.get(code);
         return {
           ...BASE_STYLE,
           fillColor: colorForPct(result?.pct_valid),
           fillOpacity: result ? 0.85 : 0.55,
         };
       },
-    [],
+    [results],
   );
 
   const onEachFeature = useMemo(
@@ -103,7 +142,7 @@ export function ParanaMapInner() {
         layer: Layer,
       ) => {
         const code = featureIbgeCode(feature.properties);
-        const result = MOCK_RESULTS_BY_CODE.get(code);
+        const result = results?.get(code);
         const name = feature.properties.name;
 
         layer.bindTooltip(buildTooltipHtml(name, result), {
@@ -126,10 +165,10 @@ export function ParanaMapInner() {
           },
         });
       },
-    [],
+    [results],
   );
 
-  if (error) {
+  if (geoError) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background">
         <div className="flex max-w-sm flex-col items-center gap-3 text-center">
@@ -138,20 +177,20 @@ export function ParanaMapInner() {
             Não foi possível carregar o mapa do Paraná.
           </p>
           <code className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
-            {error}
+            {geoError}
           </code>
         </div>
       </div>
     );
   }
 
-  if (!geojson) {
+  if (!geojson || (isLoadingResults && !results)) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">
-            Carregando municípios…
+            {!geojson ? "Carregando municípios…" : "Carregando resultados…"}
           </p>
         </div>
       </div>
@@ -175,6 +214,7 @@ export function ParanaMapInner() {
         subdomains={["a", "b", "c", "d"]}
       />
       <GeoJSON
+        key={resultsVersion}
         ref={(layer) => {
           geoRef.current = layer;
         }}
@@ -182,13 +222,19 @@ export function ParanaMapInner() {
         style={styleFn}
         onEachFeature={onEachFeature}
       />
-      <MapLegend />
+      <MapLegend isMock={Boolean(isMock)} resultsError={resultsError ?? null} />
     </MapContainer>
   );
 }
 
-/** Legenda flutuante no canto inferior esquerdo. */
-function MapLegend() {
+/** Legenda + badge de status (mock vs banco real). */
+function MapLegend({
+  isMock,
+  resultsError,
+}: {
+  isMock: boolean;
+  resultsError: Error | null;
+}) {
   return (
     <div
       className="leaflet-control leaflet-bar pointer-events-auto"
@@ -207,8 +253,19 @@ function MapLegend() {
         minWidth: 140,
       }}
     >
-      <div style={{ fontWeight: 600, color: "hsl(var(--foreground))", marginBottom: 6 }}>
-        % votos válidos
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          marginBottom: 6,
+        }}
+      >
+        <span style={{ fontWeight: 600, color: "hsl(var(--foreground))" }}>
+          % votos válidos
+        </span>
+        <SourceBadge isMock={isMock} hasError={Boolean(resultsError)} />
       </div>
       {[
         { label: "≥ 80%", color: "#C2410C" },
@@ -236,6 +293,57 @@ function MapLegend() {
         </div>
       ))}
     </div>
+  );
+}
+
+function SourceBadge({
+  isMock,
+  hasError,
+}: {
+  isMock: boolean;
+  hasError: boolean;
+}) {
+  if (isMock) {
+    return (
+      <span
+        title={
+          hasError
+            ? "Supabase indisponível — usando mock em memória"
+            : "NEXT_PUBLIC_SUPABASE_URL não configurada — usando mock em memória"
+        }
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          fontSize: 10,
+          fontWeight: 600,
+          color: hasError ? "hsl(var(--destructive))" : "hsl(var(--muted-foreground))",
+          background: "hsl(var(--muted) / 0.6)",
+          padding: "2px 6px",
+          borderRadius: 3,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        MOCK
+      </span>
+    );
+  }
+  return (
+    <span
+      title="Dados vindos do Supabase"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: 10,
+        fontWeight: 600,
+        color: "hsl(var(--success))",
+      }}
+    >
+      <Database size={10} />
+      DB
+    </span>
   );
 }
 
