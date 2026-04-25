@@ -7,11 +7,17 @@
 .env.*
 !.env.example
 
-# Credenciais
+# Credenciais — nunca commitar nada que se pareça com chave/segredo
 *.pem
 *.key
+*.p12
 service-account*.json
 google-credentials*.json
+gcp-credentials*.json
+*credentials*.json
+*-secret.json
+secrets/
+.secrets/
 
 # Node / Next.js
 node_modules/
