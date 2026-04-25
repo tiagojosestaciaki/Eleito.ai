@@ -1,24 +1,5 @@
 "use client";
 
-/**
- * Hook de acesso aos resultados eleitorais por município.
- *
- * Contrato:
- *   const { data, isLoading, error } = useElectionResults({ electionId });
- *   // data: Map<ibge_code, ElectionResult> | null
- *
- * Estratégia:
- *   1. Se NEXT_PUBLIC_SUPABASE_URL não está configurada (ou ainda aponta
- *      para o placeholder do .env.example), usa direto o mock em memória.
- *   2. Caso contrário, busca `results_municipality` filtrando por eleição.
- *      Se `electionId` não foi passado, resolve para a eleição seedada
- *      (deputado_estadual 2022 · turno 1).
- *   3. Em erro de rede, RLS ou qualquer falha, cai para o mock com log.
- *
- * Filtros `cargo` e `partido` são aceitos pela API mas ainda não
- * aplicados — ficam como parâmetros registrados para a Etapa 4.5+.
- */
-
 import { useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
@@ -43,7 +24,6 @@ export type UseElectionResultsReturn = {
   data: ResultsByCode | null;
   isLoading: boolean;
   error: Error | null;
-  /** Indica se o retorno veio do mock em memória (true) ou do Supabase. */
   isMock: boolean;
 };
 
@@ -81,7 +61,6 @@ export function useElectionResults(
     isMock: false,
   });
 
-  // Serializa filtros para deps estável.
   const filterKey = JSON.stringify({
     electionId: filters.electionId ?? null,
     cargo: filters.cargo ?? null,
@@ -107,7 +86,6 @@ export function useElectionResults(
       try {
         const supabase = createClient();
 
-        // 1. Resolve election_id padrão se não foi passado
         let electionId = filters.electionId;
         if (!electionId) {
           const { data: eData, error: eErr } = await supabase
@@ -118,16 +96,16 @@ export function useElectionResults(
             .eq("role", "deputado_estadual")
             .limit(1)
             .maybeSingle();
+
           if (eErr) throw new Error(`Buscar eleição: ${eErr.message}`);
-          if (!eData) {
+          if (!eData || typeof (eData as Record<string, unknown>)["id"] === "undefined") {
             throw new Error(
               "Eleição padrão (deputado_estadual 2022 · turno 1) não encontrada — rode as migrations do Supabase.",
             );
           }
-          electionId = eData.id;
+          electionId = (eData as Record<string, number>)["id"];
         }
 
-        // 2. Busca os resultados agregados por município
         const { data, error } = await supabase
           .from("results_municipality")
           .select("ibge_code, votes, pct_valid, rank_in_municipality")
