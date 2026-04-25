@@ -98,15 +98,15 @@ export function useElectionResults(
             .maybeSingle();
 
           if (eErr) throw new Error(`Buscar eleição: ${eErr.message}`);
-          if (!eData || typeof (eData as Record<string, unknown>)["id"] === "undefined") {
+          if (!eData) {
             throw new Error(
               "Eleição padrão (deputado_estadual 2022 · turno 1) não encontrada — rode as migrations do Supabase.",
             );
           }
-          electionId = (eData as Record<string, number>)["id"];
+          electionId = (eData as unknown as { id: number }).id;
         }
 
-        const { data, error } = await supabase
+        const { data: rows, error } = await supabase
           .from("results_municipality")
           .select("ibge_code, votes, pct_valid, rank_in_municipality")
           .eq("election_id", electionId);
@@ -114,8 +114,15 @@ export function useElectionResults(
         if (cancelled) return;
         if (error) throw new Error(error.message);
 
+        type RawRow = {
+          ibge_code: number;
+          votes: number | null;
+          pct_valid: number | null;
+          rank_in_municipality: number | null;
+        };
+
         const map: ResultsByCode = new Map();
-        for (const row of data ?? []) {
+        for (const row of (rows ?? []) as RawRow[]) {
           map.set(row.ibge_code, {
             ibge_code: row.ibge_code,
             votes: row.votes ?? 0,
