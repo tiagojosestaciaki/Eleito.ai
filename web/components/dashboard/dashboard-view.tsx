@@ -17,8 +17,9 @@ export function DashboardView() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
-    // h-[calc(100vh-3.5rem)] bate com a altura do Header (h-14 = 3.5rem).
-    <div className="relative h-[calc(100vh-3.5rem)] w-full overflow-hidden">
+    // O header sumiu na v3 (sidebar lateral substitui). O mapa ocupa
+    // a viewport inteira do <main>.
+    <div className="relative h-screen w-full overflow-hidden">
       {/* Mapa em tela cheia */}
       <div className="absolute inset-0">
         <ParanaMap />

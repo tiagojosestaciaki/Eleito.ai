@@ -16,7 +16,7 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GeoJSON as LeafletGeoJSON, Layer, Path, PathOptions } from "leaflet";
 import type { Feature } from "geojson";
-import { GeoJSON, MapContainer, TileLayer } from "react-leaflet";
+import { GeoJSON, MapContainer, TileLayer, ZoomControl } from "react-leaflet";
 import { Database, Loader2, MapPinOff } from "lucide-react";
 
 import type {
@@ -204,10 +204,14 @@ export function ParanaMapInner({
       minZoom={6}
       maxZoom={12}
       scrollWheelZoom
-      zoomControl
+      zoomControl={false}
       className="h-full w-full bg-background"
       style={{ background: "hsl(var(--background))" }}
     >
+      {/* Zoom no canto inferior direito: livre dos hambúrgueres
+          (AppSidebar à esquerda no mobile, FiltersSidebar à direita)
+          e da legenda (bottom-left). */}
+      <ZoomControl position="bottomright" />
       <TileLayer
         url="https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'

@@ -1,12 +1,16 @@
 import { redirect } from "next/navigation";
 
-import { Header } from "@/components/layout/header";
+import { AppSidebar } from "@/components/layout/app-sidebar";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Layout protegido do dashboard. O middleware já barra não-autenticados,
- * mas fazemos um safety check aqui para garantir que o user existe antes
- * de renderizar o header.
+ * Layout protegido do dashboard.
+ *
+ * Estrutura v3: sidebar lateral fixa de 240px à esquerda em desktop;
+ * em mobile a sidebar vira drawer com hambúrguer flutuante.
+ *
+ * O middleware já barra não-autenticados, mas fazemos um safety check
+ * server-side aqui para garantir o `user.email` antes de renderizar.
  */
 export default async function DashboardLayout({
   children,
@@ -23,9 +27,9 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Header userEmail={user.email ?? "—"} />
-      <main className="flex-1">{children}</main>
+    <div className="min-h-screen bg-background">
+      <AppSidebar userEmail={user.email ?? "—"} />
+      <main className="min-h-screen md:pl-[240px]">{children}</main>
     </div>
   );
 }
